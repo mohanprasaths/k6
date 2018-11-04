@@ -22,10 +22,13 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/fatih/color"
 
 	"github.com/dop251/goja"
 	"github.com/loadimpact/k6/js/common"
@@ -55,6 +58,27 @@ func (res *Response) JSON(selector ...string) goja.Value {
 	}
 	if v == nil {
 		return goja.Undefined()
+	}
+	var value interface{}
+	var body []byte
+	if err := json.Unmarshal(body, &value); err != nil {
+		var msg string
+		switch t := err.(type) {
+		case *json.SyntaxError:
+			jsn := string(body[0:t.Offset])
+			jsn += color.RedString("<--(Invalid Character)")
+			jsn += string(body[t.Offset:])
+			msg = fmt.Sprintf("\n Invalid character at offset %v\n %s", t.Offset, jsn)
+		case *json.UnmarshalTypeError:
+			jsn := string(body[0:t.Offset])
+			jsn += color.RedString("<--(Invalid Type)")
+			jsn += string(body[t.Offset+1:])
+			msg = fmt.Sprintf("\n Invalid value at offset %v\n %s", t.Offset, jsn)
+		default:
+			msg = err.Error()
+		}
+		err = errors.New(err.Error() + msg)
+		common.Throw(common.GetRuntime(res.GetCtx()), err)
 	}
 	return common.GetRuntime(res.GetCtx()).ToValue(v)
 }
